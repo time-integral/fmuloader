@@ -127,7 +127,7 @@ toml = [
 
 [[package]]
 name = "fmuloader"
-version = "0.1.0"
+version = "0.1.1rc0"
 source = { editable = "." }
 
 [package.dev-dependencies]
