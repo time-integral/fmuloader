@@ -17,5 +17,5 @@ def test_metadata(reference_fmu, reference_fmus_dir):
     filename = (reference_fmus_dir / reference_fmu).absolute()
 
     slave = Fmi2Slave(filename, model_identifier=pathlib.Path(filename).stem)
-    
+
     assert slave.get_version() == "2.0"

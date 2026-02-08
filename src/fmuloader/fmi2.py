@@ -139,9 +139,7 @@ def _default_logger(
 
 
 def _default_allocate(nobj: int, size: int) -> int:
-    return ctypes.cast(
-        ctypes.CDLL(None).calloc(nobj, size), c_void_p
-    ).value or 0
+    return ctypes.cast(ctypes.CDLL(None).calloc(nobj, size), c_void_p).value or 0
 
 
 def _default_free(obj: int) -> None:
@@ -264,9 +262,7 @@ class Fmi2Error(Exception):
     def __init__(self, func_name: str, status: Fmi2Status) -> None:
         self.func_name = func_name
         self.status = status
-        super().__init__(
-            f"{func_name} returned {status.name} ({status.value})"
-        )
+        super().__init__(f"{func_name} returned {status.name} ({status.value})")
 
 
 def _check_status(func_name: str, status: int) -> Fmi2Status:
@@ -363,9 +359,7 @@ class Fmi2Slave:
                 self._extract_dir = Path(unpack_dir)
                 self._extract_dir.mkdir(parents=True, exist_ok=True)
             else:
-                self._tmpdir = tempfile.TemporaryDirectory(
-                    prefix="fmuloader_"
-                )
+                self._tmpdir = tempfile.TemporaryDirectory(prefix="fmuloader_")
                 self._extract_dir = Path(self._tmpdir.name)
             with zipfile.ZipFile(self._path) as zf:
                 zf.extractall(self._extract_dir)
@@ -412,13 +406,13 @@ class Fmi2Slave:
         self._fmi2Instantiate = dll.fmi2Instantiate
         self._fmi2Instantiate.restype = fmi2Component
         self._fmi2Instantiate.argtypes = [
-            fmi2String,       # instanceName
-            c_int,            # fmuType
-            fmi2String,       # fmuGUID
-            fmi2String,       # fmuResourceLocation
+            fmi2String,  # instanceName
+            c_int,  # fmuType
+            fmi2String,  # fmuGUID
+            fmi2String,  # fmuResourceLocation
             POINTER(_Fmi2CallbackFunctions),
-            fmi2Boolean,      # visible
-            fmi2Boolean,      # loggingOn
+            fmi2Boolean,  # visible
+            fmi2Boolean,  # loggingOn
         ]
 
         self._fmi2FreeInstance = dll.fmi2FreeInstance
@@ -429,11 +423,11 @@ class Fmi2Slave:
         self._fmi2SetupExperiment.restype = c_int
         self._fmi2SetupExperiment.argtypes = [
             fmi2Component,
-            fmi2Boolean,   # toleranceDefined
-            fmi2Real,      # tolerance
-            fmi2Real,      # startTime
-            fmi2Boolean,   # stopTimeDefined
-            fmi2Real,      # stopTime
+            fmi2Boolean,  # toleranceDefined
+            fmi2Real,  # tolerance
+            fmi2Real,  # startTime
+            fmi2Boolean,  # stopTimeDefined
+            fmi2Real,  # stopTime
         ]
 
         self._fmi2EnterInitializationMode = dll.fmi2EnterInitializationMode
@@ -644,9 +638,7 @@ class Fmi2Slave:
             c_size_t,
         ]
 
-        self._fmi2GetNominalsOfContinuousStates = (
-            dll.fmi2GetNominalsOfContinuousStates
-        )
+        self._fmi2GetNominalsOfContinuousStates = dll.fmi2GetNominalsOfContinuousStates
         self._fmi2GetNominalsOfContinuousStates.restype = c_int
         self._fmi2GetNominalsOfContinuousStates.argtypes = [
             fmi2Component,
@@ -679,9 +671,9 @@ class Fmi2Slave:
         self._fmi2DoStep.restype = c_int
         self._fmi2DoStep.argtypes = [
             fmi2Component,
-            fmi2Real,       # currentCommunicationPoint
-            fmi2Real,       # communicationStepSize
-            fmi2Boolean,    # noSetFMUStatePriorToCurrentPoint
+            fmi2Real,  # currentCommunicationPoint
+            fmi2Real,  # communicationStepSize
+            fmi2Boolean,  # noSetFMUStatePriorToCurrentPoint
         ]
 
         self._fmi2CancelStep = dll.fmi2CancelStep
@@ -822,9 +814,7 @@ class Fmi2Slave:
                 resources_dir = self._extract_dir
             resource_location = _path_to_file_uri(resources_dir)
 
-        self._callbacks = _make_callbacks(
-            use_memory_callbacks=use_memory_callbacks
-        )
+        self._callbacks = _make_callbacks(use_memory_callbacks=use_memory_callbacks)
 
         component = self._fmi2Instantiate(
             instance_name.encode("utf-8"),
@@ -836,9 +826,7 @@ class Fmi2Slave:
             fmi2True if logging_on else fmi2False,
         )
         if not component:
-            raise RuntimeError(
-                f"fmi2Instantiate returned NULL for {instance_name!r}"
-            )
+            raise RuntimeError(f"fmi2Instantiate returned NULL for {instance_name!r}")
         self._component = component
 
     def free_instance(self) -> None:
@@ -890,36 +878,28 @@ class Fmi2Slave:
     def get_real(self, vrs: Sequence[int]) -> list[float]:
         n = len(vrs)
         values = (fmi2Real * n)()
-        status = self._fmi2GetReal(
-            self._component, self._vr_array(vrs), n, values
-        )
+        status = self._fmi2GetReal(self._component, self._vr_array(vrs), n, values)
         _check_status("fmi2GetReal", status)
         return list(values)
 
     def get_integer(self, vrs: Sequence[int]) -> list[int]:
         n = len(vrs)
         values = (fmi2Integer * n)()
-        status = self._fmi2GetInteger(
-            self._component, self._vr_array(vrs), n, values
-        )
+        status = self._fmi2GetInteger(self._component, self._vr_array(vrs), n, values)
         _check_status("fmi2GetInteger", status)
         return list(values)
 
     def get_boolean(self, vrs: Sequence[int]) -> list[bool]:
         n = len(vrs)
         values = (fmi2Boolean * n)()
-        status = self._fmi2GetBoolean(
-            self._component, self._vr_array(vrs), n, values
-        )
+        status = self._fmi2GetBoolean(self._component, self._vr_array(vrs), n, values)
         _check_status("fmi2GetBoolean", status)
         return [bool(v) for v in values]
 
     def get_string(self, vrs: Sequence[int]) -> list[str]:
         n = len(vrs)
         values = (fmi2String * n)()
-        status = self._fmi2GetString(
-            self._component, self._vr_array(vrs), n, values
-        )
+        status = self._fmi2GetString(self._component, self._vr_array(vrs), n, values)
         _check_status("fmi2GetString", status)
         return [v.decode("utf-8") if v else "" for v in values]
 
@@ -936,9 +916,7 @@ class Fmi2Slave:
         )
         return _check_status("fmi2SetReal", status)
 
-    def set_integer(
-        self, vrs: Sequence[int], values: Sequence[int]
-    ) -> Fmi2Status:
+    def set_integer(self, vrs: Sequence[int], values: Sequence[int]) -> Fmi2Status:
         n = len(vrs)
         status = self._fmi2SetInteger(
             self._component,
@@ -960,9 +938,7 @@ class Fmi2Slave:
         )
         return _check_status("fmi2SetBoolean", status)
 
-    def set_string(
-        self, vrs: Sequence[int], values: Sequence[str]
-    ) -> Fmi2Status:
+    def set_string(self, vrs: Sequence[int], values: Sequence[str]) -> Fmi2Status:
         n = len(vrs)
         status = self._fmi2SetString(
             self._component,
@@ -991,18 +967,14 @@ class Fmi2Slave:
 
     def serialized_fmu_state_size(self, state: c_void_p) -> int:
         size = c_size_t()
-        status = self._fmi2SerializedFMUstateSize(
-            self._component, state, byref(size)
-        )
+        status = self._fmi2SerializedFMUstateSize(self._component, state, byref(size))
         _check_status("fmi2SerializedFMUstateSize", status)
         return size.value
 
     def serialize_fmu_state(self, state: c_void_p) -> bytes:
         size = self.serialized_fmu_state_size(state)
         buf = (fmi2Byte * size)()
-        status = self._fmi2SerializeFMUstate(
-            self._component, state, buf, size
-        )
+        status = self._fmi2SerializeFMUstate(self._component, state, buf, size)
         _check_status("fmi2SerializeFMUstate", status)
         return bytes(buf)
 
@@ -1010,9 +982,7 @@ class Fmi2Slave:
         size = len(data)
         buf = (fmi2Byte * size)(*data)
         state = fmi2FMUstate()
-        status = self._fmi2DeSerializeFMUstate(
-            self._component, buf, size, byref(state)
-        )
+        status = self._fmi2DeSerializeFMUstate(self._component, buf, size, byref(state))
         _check_status("fmi2DeSerializeFMUstate", status)
         return state
 
@@ -1049,9 +1019,7 @@ class Fmi2Slave:
 
     def new_discrete_states(self) -> Fmi2EventInfo:
         event_info = Fmi2EventInfo()
-        status = self._fmi2NewDiscreteStates(
-            self._component, byref(event_info)
-        )
+        status = self._fmi2NewDiscreteStates(self._component, byref(event_info))
         _check_status("fmi2NewDiscreteStates", status)
         return event_info
 
@@ -1107,9 +1075,7 @@ class Fmi2Slave:
             ni: Number of event indicators.
         """
         indicators = (fmi2Real * ni)()
-        status = self._fmi2GetEventIndicators(
-            self._component, indicators, ni
-        )
+        status = self._fmi2GetEventIndicators(self._component, indicators, ni)
         _check_status("fmi2GetEventIndicators", status)
         return list(indicators)
 
@@ -1131,9 +1097,7 @@ class Fmi2Slave:
             nx: Number of continuous states.
         """
         nominals = (fmi2Real * nx)()
-        status = self._fmi2GetNominalsOfContinuousStates(
-            self._component, nominals, nx
-        )
+        status = self._fmi2GetNominalsOfContinuousStates(self._component, nominals, nx)
         _check_status("fmi2GetNominalsOfContinuousStates", status)
         return list(nominals)
 
@@ -1193,41 +1157,31 @@ class Fmi2Slave:
 
     def get_status(self, kind: Fmi2StatusKind) -> Fmi2Status:
         value = c_int()
-        status = self._fmi2GetStatus(
-            self._component, int(kind), byref(value)
-        )
+        status = self._fmi2GetStatus(self._component, int(kind), byref(value))
         _check_status("fmi2GetStatus", status)
         return Fmi2Status(value.value)
 
     def get_real_status(self, kind: Fmi2StatusKind) -> float:
         value = fmi2Real()
-        status = self._fmi2GetRealStatus(
-            self._component, int(kind), byref(value)
-        )
+        status = self._fmi2GetRealStatus(self._component, int(kind), byref(value))
         _check_status("fmi2GetRealStatus", status)
         return value.value
 
     def get_integer_status(self, kind: Fmi2StatusKind) -> int:
         value = fmi2Integer()
-        status = self._fmi2GetIntegerStatus(
-            self._component, int(kind), byref(value)
-        )
+        status = self._fmi2GetIntegerStatus(self._component, int(kind), byref(value))
         _check_status("fmi2GetIntegerStatus", status)
         return value.value
 
     def get_boolean_status(self, kind: Fmi2StatusKind) -> bool:
         value = fmi2Boolean()
-        status = self._fmi2GetBooleanStatus(
-            self._component, int(kind), byref(value)
-        )
+        status = self._fmi2GetBooleanStatus(self._component, int(kind), byref(value))
         _check_status("fmi2GetBooleanStatus", status)
         return bool(value.value)
 
     def get_string_status(self, kind: Fmi2StatusKind) -> str:
         value = fmi2String()
-        status = self._fmi2GetStringStatus(
-            self._component, int(kind), byref(value)
-        )
+        status = self._fmi2GetStringStatus(self._component, int(kind), byref(value))
         _check_status("fmi2GetStringStatus", status)
         return value.value.decode("utf-8") if value.value else ""
 

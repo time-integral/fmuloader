@@ -44,11 +44,11 @@ applyTo: '**/*.py'
 def calculate_area(radius: float) -> float:
     """
     Calculate the area of a circle given the radius.
-    
+
     Parameters:
     -----------
     radius (float): The radius of the circle. Must be a non-negative value.
-    
+
     Returns:
     -----------
     float: The area of the circle, calculated as π * radius^2.
