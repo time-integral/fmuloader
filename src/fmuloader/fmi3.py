@@ -183,9 +183,6 @@ def _make_log_callback(
     return _fmi3LogMessageCallback(_default_logger)
 
 
-_LOGGER_FUNC = _make_log_callback()
-
-
 # ---------------------------------------------------------------------------
 # Shared library helpers
 # ---------------------------------------------------------------------------
