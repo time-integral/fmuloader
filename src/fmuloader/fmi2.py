@@ -31,7 +31,7 @@ from ctypes import (
 )
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 # ---------------------------------------------------------------------------
 # FMI 2.0 primitive types
@@ -182,12 +182,12 @@ _STEP_FINISHED_FUNC = _fmi2StepFinished(0)  # NULL
 
 
 def _make_callbacks(
-    use_memory_callbacks: bool = True,
-    logger_func: Any | None = None,
+    cannot_use_memory_management_functions: bool = False,
+    logger_func: Callable[[object, int, bytes, bytes], None] | None = None,
 ) -> _Fmi2CallbackFunctions:
     """Create the callback struct for fmi2Instantiate."""
     log_cb = logger_func if logger_func is not None else _LOGGER_FUNC
-    if use_memory_callbacks:
+    if not cannot_use_memory_management_functions:
         return _Fmi2CallbackFunctions(
             logger=log_cb,
             allocateMemory=_ALLOCATE_FUNC,
@@ -820,8 +820,8 @@ class Fmi2Slave:
         resource_location: str | None = None,
         visible: bool = False,
         logging_on: bool = False,
-        use_memory_callbacks: bool = True,
-        log_message_callback: Any | None = None,
+        cannot_use_memory_management_functions: bool = False,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate the FMU.
 
@@ -835,7 +835,7 @@ class Fmi2Slave:
                 from the extracted FMU path.
             visible: Whether a simulator UI should be shown.
             logging_on: Whether debug logging is initially enabled.
-            use_memory_callbacks: When *False* the ``allocateMemory``
+            cannot_use_memory_management_functions: When *True* the ``allocateMemory``
                 and ``freeMemory`` callback pointers are set to *NULL*
                 (for FMUs that declare
                 ``canNotUseMemoryManagementFunctions="true"``).
@@ -852,7 +852,7 @@ class Fmi2Slave:
 
         self._log_callback = _make_log_callback(log_message_callback)
         self._callbacks = _make_callbacks(
-            use_memory_callbacks=use_memory_callbacks,
+            cannot_use_memory_management_functions=cannot_use_memory_management_functions,
             logger_func=self._log_callback,
         )
 

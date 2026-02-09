@@ -40,7 +40,7 @@ from ctypes import (
 )
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 # ---------------------------------------------------------------------------
 # FMI 3.0 primitive types (mirrors fmi3PlatformTypes.h)
@@ -1196,7 +1196,7 @@ class Fmi3Slave:
         resource_path: str | None = None,
         visible: bool = False,
         logging_on: bool = False,
-        log_message_callback: Any | None = None,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate a Model Exchange FMU.
 
@@ -1243,7 +1243,7 @@ class Fmi3Slave:
         early_return_allowed: bool = False,
         required_intermediate_variables: Sequence[int] | None = None,
         intermediate_update_callback: Any | None = None,
-        log_message_callback: Any | None = None,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate a Co-Simulation FMU.
 
@@ -1314,7 +1314,7 @@ class Fmi3Slave:
         clock_update_callback: Any | None = None,
         lock_preemption_callback: Any | None = None,
         unlock_preemption_callback: Any | None = None,
-        log_message_callback: Any | None = None,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate a Scheduled Execution FMU.
 
