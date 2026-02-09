@@ -11,6 +11,7 @@ Reference: FMI Specification 3.0.2
 from __future__ import annotations
 
 import ctypes
+import logging
 import platform
 import struct
 import tempfile
@@ -39,7 +40,7 @@ from ctypes import (
 )
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 # ---------------------------------------------------------------------------
 # FMI 3.0 primitive types (mirrors fmi3PlatformTypes.h)
@@ -145,6 +146,17 @@ _fmi3UnlockPreemptionCallback = CFUNCTYPE(None)
 # ---------------------------------------------------------------------------
 # Default callbacks
 # ---------------------------------------------------------------------------
+_logger = logging.getLogger("fmuloader.fmi3")
+
+_FMI3_STATUS_TO_LOG_LEVEL: dict[int, int] = {
+    Fmi3Status.OK: logging.DEBUG,
+    Fmi3Status.WARNING: logging.WARNING,
+    Fmi3Status.DISCARD: logging.WARNING,
+    Fmi3Status.ERROR: logging.ERROR,
+    Fmi3Status.FATAL: logging.CRITICAL,
+}
+
+
 def _default_logger(
     _env: object,
     status: int,
@@ -153,11 +165,22 @@ def _default_logger(
 ) -> None:
     cat = category.decode() if category else ""
     msg = message.decode() if message else ""
-    status_str = Fmi3Status(status).name
-    print(f"[{status_str}] [{cat}] {msg}")
+    level = _FMI3_STATUS_TO_LOG_LEVEL.get(status, logging.WARNING)
+    _logger.log(level, "[%s] %s", cat, msg)
 
 
-_LOGGER_FUNC = _fmi3LogMessageCallback(_default_logger)
+def _make_log_callback(
+    callback: Any | None = None,
+) -> Any:
+    """Wrap *callback* in a ctypes function pointer.
+
+    When *callback* is ``None`` the module-level default logger is used.
+    The returned object **must** be stored on the instance so that ctypes
+    does not garbage-collect the pointer while the FMU is alive.
+    """
+    if callback is not None:
+        return _fmi3LogMessageCallback(callback)
+    return _fmi3LogMessageCallback(_default_logger)
 
 
 # ---------------------------------------------------------------------------
@@ -1173,6 +1196,7 @@ class Fmi3Slave:
         resource_path: str | None = None,
         visible: bool = False,
         logging_on: bool = False,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate a Model Exchange FMU.
 
@@ -1185,8 +1209,13 @@ class Fmi3Slave:
                 automatically when *None*.
             visible: Whether a simulator UI should be shown.
             logging_on: Whether debug logging is initially enabled.
+            log_message_callback: Optional Python callable with
+                signature ``(env, status, category, message)``.
+                When *None* the built-in logger (``logging.getLogger
+                ('fmuloader.fmi3')``) is used.
         """
         rp = self._resolve_resource_path(resource_path)
+        self._log_callback = _make_log_callback(log_message_callback)
         instance = self._fmi3InstantiateModelExchange(
             instance_name.encode("utf-8"),
             instantiation_token.encode("utf-8"),
@@ -1194,7 +1223,7 @@ class Fmi3Slave:
             visible,
             logging_on,
             None,  # instanceEnvironment
-            _LOGGER_FUNC,
+            self._log_callback,
         )
         if not instance:
             raise RuntimeError(
@@ -1214,6 +1243,7 @@ class Fmi3Slave:
         early_return_allowed: bool = False,
         required_intermediate_variables: Sequence[int] | None = None,
         intermediate_update_callback: Any | None = None,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate a Co-Simulation FMU.
 
@@ -1232,6 +1262,10 @@ class Fmi3Slave:
                 variables that need intermediate access.
             intermediate_update_callback: Optional callback.  When
                 *None*, a NULL pointer is passed.
+            log_message_callback: Optional Python callable with
+                signature ``(env, status, category, message)``.
+                When *None* the built-in logger (``logging.getLogger
+                ('fmuloader.fmi3')``) is used.
         """
         rp = self._resolve_resource_path(resource_path)
 
@@ -1248,6 +1282,7 @@ class Fmi3Slave:
             else _fmi3IntermediateUpdateCallback(0)
         )
 
+        self._log_callback = _make_log_callback(log_message_callback)
         instance = self._fmi3InstantiateCoSimulation(
             instance_name.encode("utf-8"),
             instantiation_token.encode("utf-8"),
@@ -1259,7 +1294,7 @@ class Fmi3Slave:
             riv_arr,
             n_riv,
             None,  # instanceEnvironment
-            _LOGGER_FUNC,
+            self._log_callback,
             iu_cb,
         )
         if not instance:
@@ -1279,6 +1314,7 @@ class Fmi3Slave:
         clock_update_callback: Any | None = None,
         lock_preemption_callback: Any | None = None,
         unlock_preemption_callback: Any | None = None,
+        log_message_callback: Callable[[object, int, bytes, bytes], None] | None = None,
     ) -> None:
         """Instantiate a Scheduled Execution FMU.
 
@@ -1293,6 +1329,10 @@ class Fmi3Slave:
             clock_update_callback: Callback for clock updates.
             lock_preemption_callback: Callback to lock preemption.
             unlock_preemption_callback: Callback to unlock preemption.
+            log_message_callback: Optional Python callable with
+                signature ``(env, status, category, message)``.
+                When *None* the built-in logger (``logging.getLogger
+                ('fmuloader.fmi3')``) is used.
         """
         rp = self._resolve_resource_path(resource_path)
 
@@ -1312,6 +1352,7 @@ class Fmi3Slave:
             else _fmi3UnlockPreemptionCallback(0)
         )
 
+        self._log_callback = _make_log_callback(log_message_callback)
         instance = self._fmi3InstantiateScheduledExecution(
             instance_name.encode("utf-8"),
             instantiation_token.encode("utf-8"),
@@ -1319,7 +1360,7 @@ class Fmi3Slave:
             visible,
             logging_on,
             None,  # instanceEnvironment
-            _LOGGER_FUNC,
+            self._log_callback,
             cu_cb,
             lp_cb,
             up_cb,

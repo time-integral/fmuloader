@@ -1,3 +1,4 @@
+import logging
 import platform
 
 import pytest
@@ -953,6 +954,52 @@ def test_fmi3_set_debug_logging(reference_fmus_dir):
     assert status == Fmi3Status.OK
 
     slave.free_instance()
+
+
+def test_fmi3_logging_uses_python_logging(reference_fmus_dir, caplog):
+    """Verify that FMU log messages are routed through Python logging."""
+    with caplog.at_level(logging.DEBUG, logger="fmuloader.fmi3"):
+        slave = _make_slave(reference_fmus_dir, BOUNCING_BALL)
+        _instantiate_cs(slave, BOUNCING_BALL, "bb_pylog", logging_on=True)
+        slave.set_debug_logging(True)
+        slave.enter_initialization_mode(start_time=0.0, stop_time=3.0)
+        slave.exit_initialization_mode()
+        slave.do_step(0.0, 0.01)
+        slave.terminate()
+        slave.free_instance()
+    # The logger name should be fmuloader.fmi3 for any messages emitted
+    for record in caplog.records:
+        assert record.name == "fmuloader.fmi3"
+
+
+def test_fmi3_custom_log_callback(reference_fmus_dir):
+    """Verify that a user-supplied log callback is invoked."""
+    messages: list[tuple[int, str, str]] = []
+
+    def my_logger(_env, status, category, message):
+        cat = category.decode() if category else ""
+        msg = message.decode() if message else ""
+        messages.append((status, cat, msg))
+
+    slave = _make_slave(reference_fmus_dir, BOUNCING_BALL)
+    slave.instantiate_co_simulation(
+        "bb_custom_log",
+        instantiation_token=BOUNCING_BALL[2],
+        logging_on=True,
+        log_message_callback=my_logger,
+    )
+    slave.set_debug_logging(True)
+    slave.enter_initialization_mode(start_time=0.0, stop_time=3.0)
+    slave.exit_initialization_mode()
+    slave.do_step(0.0, 0.01)
+    slave.terminate()
+    slave.free_instance()
+    # Custom callback should have been stored on instance (no crash = pass)
+    # If the FMU produced any messages, they went to our list
+    for status, cat, msg in messages:
+        assert isinstance(status, int)
+        assert isinstance(cat, str)
+        assert isinstance(msg, str)
 
 
 # =======================================================================

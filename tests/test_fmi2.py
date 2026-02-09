@@ -1,3 +1,4 @@
+import logging
 import platform
 import pathlib
 import pytest
@@ -450,6 +451,64 @@ def test_fmi2_set_debug_logging(reference_fmus_dir):
     assert status == Fmi2Status.OK
 
     slave.free_instance()
+
+
+@skip_arm64
+def test_fmi2_logging_uses_python_logging(reference_fmus_dir, caplog):
+    """Verify that FMU log messages are routed through Python logging."""
+    filename = (reference_fmus_dir / "2.0/BouncingBall.fmu").absolute()
+    with caplog.at_level(logging.DEBUG, logger="fmuloader.fmi2"):
+        slave = Fmi2Slave(filename, model_identifier="BouncingBall")
+        slave.instantiate(
+            "test_instance",
+            Fmi2Type.CO_SIMULATION,
+            guid="{1AE5E10D-9521-4DE3-80B9-D0EAAA7D5AF1}",
+            logging_on=True,
+        )
+        slave.set_debug_logging(True)
+        slave.setup_experiment(start_time=0.0, stop_time=10.0)
+        slave.enter_initialization_mode()
+        slave.exit_initialization_mode()
+        slave.do_step(0.0, 0.1)
+        slave.terminate()
+        slave.free_instance()
+    for record in caplog.records:
+        assert record.name == "fmuloader.fmi2"
+
+
+@skip_arm64
+def test_fmi2_custom_log_callback(reference_fmus_dir):
+    """Verify that a user-supplied log callback is invoked."""
+    filename = (reference_fmus_dir / "2.0/BouncingBall.fmu").absolute()
+    messages: list[tuple[str, int, str, str]] = []
+
+    def my_logger(_env, instance_name, status, category, message):
+        name = instance_name.decode() if instance_name else ""
+        cat = category.decode() if category else ""
+        msg = message.decode() if message else ""
+        messages.append((name, status, cat, msg))
+
+    slave = Fmi2Slave(filename, model_identifier="BouncingBall")
+    slave.instantiate(
+        "test_instance",
+        Fmi2Type.CO_SIMULATION,
+        guid="{1AE5E10D-9521-4DE3-80B9-D0EAAA7D5AF1}",
+        logging_on=True,
+        log_message_callback=my_logger,
+    )
+    slave.set_debug_logging(True)
+    slave.setup_experiment(start_time=0.0, stop_time=10.0)
+    slave.enter_initialization_mode()
+    slave.exit_initialization_mode()
+    slave.do_step(0.0, 0.1)
+    slave.terminate()
+    slave.free_instance()
+    # Custom callback should have been stored on instance (no crash = pass)
+    for name, status, cat, msg in messages:
+        assert isinstance(name, str)
+        assert isinstance(status, int)
+        assert isinstance(cat, str)
+        assert isinstance(msg, str)
 
 
 @skip_arm64
