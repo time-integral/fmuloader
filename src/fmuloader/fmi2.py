@@ -11,6 +11,7 @@ Reference: FMI Specification 2.0.5
 from __future__ import annotations
 
 import ctypes
+import logging
 import platform
 import sys
 import tempfile
@@ -30,7 +31,7 @@ from ctypes import (
 )
 from enum import IntEnum
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 # ---------------------------------------------------------------------------
 # FMI 2.0 primitive types
@@ -124,6 +125,18 @@ class Fmi2EventInfo(Structure):
 # ---------------------------------------------------------------------------
 # Default callbacks
 # ---------------------------------------------------------------------------
+_logger = logging.getLogger("fmuloader.fmi2")
+
+_FMI2_STATUS_TO_LOG_LEVEL: dict[int, int] = {
+    Fmi2Status.OK: logging.DEBUG,
+    Fmi2Status.WARNING: logging.WARNING,
+    Fmi2Status.DISCARD: logging.WARNING,
+    Fmi2Status.ERROR: logging.ERROR,
+    Fmi2Status.FATAL: logging.CRITICAL,
+    Fmi2Status.PENDING: logging.DEBUG,
+}
+
+
 def _default_logger(
     _env: object,
     instance_name: bytes | None,
@@ -134,8 +147,25 @@ def _default_logger(
     name = instance_name.decode() if instance_name else ""
     cat = category.decode() if category else ""
     msg = message.decode() if message else ""
-    status_str = Fmi2Status(status).name
-    print(f"[{name}] [{status_str}] [{cat}] {msg}")
+    level = _FMI2_STATUS_TO_LOG_LEVEL.get(status, logging.WARNING)
+    _logger.log(level, "[%s] [%s] %s", name, cat, msg)
+
+
+def _make_log_callback(
+    callback: Any | None = None,
+) -> Any:
+    """Wrap *callback* in a ctypes function pointer.
+
+    When *callback* is ``None`` the module-level default logger is used.
+    The returned object **must** be stored on the instance so that ctypes
+    does not garbage-collect the pointer while the FMU is alive.
+    """
+    if callback is not None:
+        return _fmi2CallbackLogger(callback)
+    return _fmi2CallbackLogger(_default_logger)
+
+
+_LOGGER_FUNC = _make_log_callback()
 
 
 def _default_allocate(nobj: int, size: int) -> int:
@@ -146,7 +176,6 @@ def _default_free(obj: int) -> None:
     ctypes.CDLL(None).free(obj)
 
 
-_LOGGER_FUNC = _fmi2CallbackLogger(_default_logger)
 _ALLOCATE_FUNC = _fmi2CallbackAllocateMemory(_default_allocate)
 _FREE_FUNC = _fmi2CallbackFreeMemory(_default_free)
 _STEP_FINISHED_FUNC = _fmi2StepFinished(0)  # NULL
@@ -154,11 +183,13 @@ _STEP_FINISHED_FUNC = _fmi2StepFinished(0)  # NULL
 
 def _make_callbacks(
     use_memory_callbacks: bool = True,
+    logger_func: Any | None = None,
 ) -> _Fmi2CallbackFunctions:
     """Create the callback struct for fmi2Instantiate."""
+    log_cb = logger_func if logger_func is not None else _LOGGER_FUNC
     if use_memory_callbacks:
         return _Fmi2CallbackFunctions(
-            logger=_LOGGER_FUNC,
+            logger=log_cb,
             allocateMemory=_ALLOCATE_FUNC,
             freeMemory=_FREE_FUNC,
             stepFinished=_STEP_FINISHED_FUNC,
@@ -166,7 +197,7 @@ def _make_callbacks(
         )
     # When canNotUseMemoryManagementFunctions=true, pass NULL for alloc/free
     return _Fmi2CallbackFunctions(
-        logger=_LOGGER_FUNC,
+        logger=log_cb,
         allocateMemory=_fmi2CallbackAllocateMemory(0),
         freeMemory=_fmi2CallbackFreeMemory(0),
         stepFinished=_STEP_FINISHED_FUNC,
@@ -790,6 +821,7 @@ class Fmi2Slave:
         visible: bool = False,
         logging_on: bool = False,
         use_memory_callbacks: bool = True,
+        log_message_callback: Any | None = None,
     ) -> None:
         """Instantiate the FMU.
 
@@ -807,6 +839,10 @@ class Fmi2Slave:
                 and ``freeMemory`` callback pointers are set to *NULL*
                 (for FMUs that declare
                 ``canNotUseMemoryManagementFunctions="true"``).
+            log_message_callback: Optional Python callable with
+                signature ``(env, instance_name, status, category,
+                message)``.  When *None* the built-in logger
+                (``logging.getLogger('fmuloader.fmi2')``) is used.
         """
         if resource_location is None:
             resources_dir = self._extract_dir / "resources"
@@ -814,7 +850,11 @@ class Fmi2Slave:
                 resources_dir = self._extract_dir
             resource_location = _path_to_file_uri(resources_dir)
 
-        self._callbacks = _make_callbacks(use_memory_callbacks=use_memory_callbacks)
+        self._log_callback = _make_log_callback(log_message_callback)
+        self._callbacks = _make_callbacks(
+            use_memory_callbacks=use_memory_callbacks,
+            logger_func=self._log_callback,
+        )
 
         component = self._fmi2Instantiate(
             instance_name.encode("utf-8"),
